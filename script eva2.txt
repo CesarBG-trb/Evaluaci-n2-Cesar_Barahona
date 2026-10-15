@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+# ============================================================
+# Evaluación Sumativa 2 - Parte B
+# Consumo de API Pública (Graphhopper Directions)
+# Alumno: Cesar Barahona
+# ============================================================
+
+import requests
+import urllib.parse
+
+# URL base para la API de Graphhopper
+url_geocodificacion = "https://graphhopper.com/api/1/geocode?"
+url_ruta = "https://graphhopper.com/api/1/route?"
+
+# === REEMPLAZA CON TU API KEY DE GRAPHHOPPER ===
+clave_api = "9c6913e9-1996-4fa8-8227-d0efab344fcf"
+
+# ============================================================
+# FUNCIÓN: Geocodificación (obtener latitud y longitud)
+# ============================================================
+def geocodificar(ubicacion, clave):
+    """Convierte una ciudad en coordenadas (lat, lng)"""
+    # Si la ubicación está vacía, pedir de nuevo
+    while ubicacion == "":
+        ubicacion = input("Ingrese la ubicación nuevamente: ")
+    
+    # Construir la URL con parámetros
+    url = url_geocodificacion + urllib.parse.urlencode(
+        {"q": ubicacion, "limit": "1", "key": clave}
+    )
+    
+    # Realizar la solicitud
+    respuesta = requests.get(url)
+    datos_json = respuesta.json()
+    codigo_estado = respuesta.status_code
+    
+    if codigo_estado == 200 and len(datos_json["hits"]) != 0:
+        lat = datos_json["hits"][0]["point"]["lat"]
+        lng = datos_json["hits"][0]["point"]["lng"]
+        nombre = datos_json["hits"][0]["name"]
+        tipo = datos_json["hits"][0]["osm_value"]
+        
+        # Construir nombre completo
+        if "country" in datos_json["hits"][0]:
+            pais = datos_json["hits"][0]["country"]
+        else:
+            pais = ""
+        
+        if "state" in datos_json["hits"][0]:
+            estado = datos_json["hits"][0]["state"]
+        else:
+            estado = ""
+        
+        if len(estado) != 0 and len(pais) != 0:
+            ubicacion_completa = nombre + ", " + estado + ", " + pais
+        elif len(estado) != 0:
+            ubicacion_completa = nombre + ", " + pais
+        else:
+            ubicacion_completa = nombre
+        
+        print(f"URL de Geocodificación para {ubicacion_completa} (Tipo: {tipo})")
+        print(url)
+        print()
+    else:
+        lat = "null"
+        lng = "null"
+        ubicacion_completa = ubicacion
+        if codigo_estado != 200:
+            print(f"Error en Geocodificación. Código: {codigo_estado}")
+            print(f"Mensaje: {datos_json.get('message', 'Error desconocido')}")
+    
+    return codigo_estado, lat, lng, ubicacion_completa
+
+
+# ============================================================
+# PROGRAMA PRINCIPAL
+# ============================================================
+print("=" * 60)
+print("   APLICACIÓN DE RUTAS - GRAPHHOPPER DIRECTIONS")
+print("=" * 60)
+
+while True:
+    # --- Selección del modo de transporte ---
+    print("\n" + "+" * 50)
+    print("Modos de transporte disponibles en Graphhopper:")
+    print("+" * 50)
+    print("  car  = Automóvil")
+    print("  bike = Bicicleta")
+    print("  foot = A pie")
+    print("+" * 50)
+    
+    perfil = ["car", "bike", "foot"]
+    vehiculo = input("Ingrese un modo de transporte (car/bike/foot): ")
+    
+    # Salida con "s" o "salir"
+    if vehiculo.lower() == "s" or vehiculo.lower() == "salir":
+        print("\n¡Gracias por usar la aplicación! Saliendo...")
+        break
+    elif vehiculo in perfil:
+        vehiculo = vehiculo
+    else:
+        vehiculo = "car"
+        print("Modo no válido. Se usará 'car' (automóvil) por defecto.")
+    
+    # --- Solicitar Ciudad de Inicio y Término ---
+    print("\n" + "-" * 50)
+    ciudad_inicio = input("Ciudad de Inicio: ")
+    if ciudad_inicio.lower() == "s" or ciudad_inicio.lower() == "salir":
+        print("\n¡Gracias por usar la aplicación! Saliendo...")
+        break
+    
+    ciudad_termino = input("Ciudad de Término: ")
+    if ciudad_termino.lower() == "s" or ciudad_termino.lower() == "salir":
+        print("\n¡Gracias por usar la aplicación! Saliendo...")
+        break
+    print("-" * 50)
+    
+    # --- Geocodificar ambas ciudades ---
+    origen = geocodificar(ciudad_inicio, clave_api)
+    destino = geocodificar(ciudad_termino, clave_api)
+    
+    # Verificar que ambas geocodificaciones fueron exitosas
+    if origen[0] == 200 and destino[0] == 200:
+        # Construir la URL de ruta
+        punto_origen = "&point=" + str(origen[1]) + "%2C" + str(origen[2])
+        punto_destino = "&point=" + str(destino[1]) + "%2C" + str(destino[2])
+        
+        url_ruta_completa = url_ruta + urllib.parse.urlencode(
+            {"key": clave_api, "vehicle": vehiculo}
+        ) + punto_origen + punto_destino
+        
+        # Realizar la solicitud de ruta
+        respuesta_ruta = requests.get(url_ruta_completa)
+        datos_ruta = respuesta_ruta.json()
+        codigo_ruta = respuesta_ruta.status_code
+        
+        print("\n" + "=" * 60)
+        print(f"Estado de la API de Ruta: {codigo_ruta}")
+        print(f"URL de la API de Ruta:\n{url_ruta_completa}")
+        print("=" * 60)
+        
+        # --- Informar errores de la API de routing ---
+        if codigo_ruta == 200:
+            print(f"\nDirecciones desde {origen[3]} hasta {destino[3]} en {vehiculo}")
+            print("=" * 60)
+            
+            # --- Distancia en kilómetros ---
+            distancia_metros = datos_ruta["paths"][0]["distance"]
+            distancia_km = distancia_metros / 1000
+            
+            # --- Duración en horas, minutos y segundos ---
+            tiempo_milisegundos = datos_ruta["paths"][0]["time"]
+            segundos_totales = int(tiempo_milisegundos / 1000)
+            horas = segundos_totales // 3600
+            minutos = (segundos_totales % 3600) // 60
+            segundos = segundos_totales % 60
+            
+            # --- Mostrar resultados con dos decimales ---
+            print(f"Distancia recorrida: {distancia_km:.2f} km")
+            print(f"Duración del viaje: {horas:02d}:{minutos:02d}:{segundos:02d}")
+            print("=" * 60)
+            
+            # --- Narrativa del viaje en español ---
+            print("\nNarrativa del viaje:")
+            print("-" * 60)
+            instrucciones = datos_ruta["paths"][0]["instructions"]
+            for instruccion in instrucciones:
+                texto = instruccion["text"]
+                distancia_inst = instruccion["distance"] / 1000
+                print(f"  • {texto} ({distancia_inst:.2f} km)")
+            print("-" * 60)
+            
+        else:
+            # --- Informar errores de la API de routing ---
+            print("\n*** ERROR EN LA API DE RUTA ***")
+            print(f"Código de estado: {codigo_ruta}")
+            if "message" in datos_ruta:
+                print(f"Mensaje: {datos_ruta['message']}")
+            else:
+                print("No se pudo obtener la ruta. Verifique las ciudades ingresadas.")
+            print("*" * 50)
+    else:
+        print("\n*** ERROR: No se pudieron geocodificar una o ambas ciudades. ***")
+        print("Por favor, verifique los nombres e intente nuevamente.")
+    
+    print("\n" + "=" * 60)
